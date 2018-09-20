@@ -1,100 +1,76 @@
 const graphql = require("graphql");
-const _ = require("lodash");
 const Book = require("../models/book");
-const Author = require("../models/author");
+const Author = require("../models/Author");
+const _ = require("lodash");
 
-//Object types is unusual in graphql. Grabbed different properties from graphql
 const {
   GraphQLObjectType,
   GraphQLString,
   GraphQLSchema,
   GraphQLID,
   GraphQLInt,
-  GraphQLList
+  GraphQLList,
+  // Used to set the fields that are required.
+  GraphQLNonNull
 } = graphql;
 
-//First object type which is BookType
 const BookType = new GraphQLObjectType({
   name: "Book",
-
-  //A function to return this object.
-
-  // #14
-  //The reason behind this function.
-  // Without the arrow function it will respond with a TypeError: Failed to fetch
-  // Top to bottom. Terminal will say that authorType is not defined.
-  // If we cut and paste authorType on top of BookType it will say that BookType is not defined.
-  // Thats why we wrap it in a function. Wrapping it in a function
-  // will not run right away  and by the time we run the function the runtime will be finished by then.
   fields: () => ({
-    //Special, graphql string to understand the type.
-    id: { type: GraphQLString },
-    name: { type: GraphQLString }, //Graphql type which are strings
+    id: { type: GraphQLID },
+    name: { type: GraphQLString },
     genre: { type: GraphQLString },
     author: {
       type: AuthorType,
       resolve(parent, args) {
-        // console.log("the Resolve of BookType object:", parent);
-        // console.log("the args of BookType object: ", args);
-        // return _.find(authors, { id: parent.authorId });
+        return Author.findById(parent.authorId);
       }
     }
   })
 });
 
-// Second object type
 const AuthorType = new GraphQLObjectType({
   name: "Author",
-  //dependencies might not reconised because one is defined another. #13
   fields: () => ({
     id: { type: GraphQLID },
-    age: { type: GraphQLInt },
     name: { type: GraphQLString },
+    age: { type: GraphQLInt },
     books: {
-      // Tell graphQL that it'll be a list, GraphQLList
-      type: new GraphQLList(BookType), //A GraphQLList of BookType
+      type: new GraphQLList(BookType),
       resolve(parent, args) {
-        //Filter through the book array to look for objects in the book array that matches.
-        // return _.filter(books, { authorId: parent.id });
+        return Book.find({ authorId: parent.id });
       }
     }
   })
 });
 
-//How to jump into graph by having rootquery
 const RootQuery = new GraphQLObjectType({
   name: "RootQueryType",
   fields: {
     book: {
       type: BookType,
-      //In JS there's no type ID therefore query ID as a number
-      //even though it is a string it will still work.
       args: { id: { type: GraphQLID } },
-
-      //To get the data from our database
       resolve(parent, args) {
-        // return _.find(books, { id: args.id }); //args is used to grab the book with that id
+        return Book.findById(args.id);
       }
     },
     author: {
       type: AuthorType,
       args: { id: { type: GraphQLID } },
       resolve(parent, args) {
-        //   return _.find(authors, { id: args.id });
+        return Author.findById(args.id);
       }
     },
-    // A list of books to return all the books, its name and other properties and even all the author
     books: {
       type: new GraphQLList(BookType),
       resolve(parent, args) {
-        // return books;
+        return Book.find({});
       }
     },
-    // A list of authors to return all the books.
     authors: {
       type: new GraphQLList(AuthorType),
       resolve(parent, args) {
-        // return authors;
+        return Author.find({});
       }
     }
   }
@@ -102,37 +78,33 @@ const RootQuery = new GraphQLObjectType({
 
 const Mutation = new GraphQLObjectType({
   name: "Mutation",
-  // For adding, updating, deleting (mutating)
   fields: {
     addAuthor: {
       type: AuthorType,
       args: {
-        name: { type: GraphQLString },
-        age: { type: GraphQLInt }
+        name: { type: new GraphQLNonNull(GraphQLString) },
+        age: { type: new GraphQLNonNull(GraphQLInt) }
       },
       resolve(parent, args) {
-        //The model inside models folder
         let author = new Author({
           name: args.name,
           age: args.age
         });
-        // To save to mongooseDb
         return author.save();
       }
     },
     addBook: {
       type: BookType,
       args: {
-        name: { type: GraphQLString },
-        genre: { type: GraphQLString },
-        authorId: { type: GraphQLID }
+        // So that user cannot just add a name without including the relevant information
+        name: { type: new GraphQLNonNull(GraphQLString) },
+        genre: { type: new GraphQLNonNull(GraphQLString) },
+        authorId: { type: new GraphQLNonNull(GraphQLID) }
       },
       resolve(parent, args) {
         let book = new Book({
           name: args.name,
           genre: args.genre,
-          //AuthorID are located in MongoDB
-          //since authors were created first and mongoDB created the ID for us.
           authorId: args.authorId
         });
         return book.save();
@@ -141,8 +113,7 @@ const Mutation = new GraphQLObjectType({
   }
 });
 
-//Creating a new schema. Exported for app.js to use.
 module.exports = new GraphQLSchema({
-  query: RootQuery, //defining which quiery for user to use
-  mutation: Mutation //exporting the constant Mutation
+  query: RootQuery,
+  mutation: Mutation
 });
